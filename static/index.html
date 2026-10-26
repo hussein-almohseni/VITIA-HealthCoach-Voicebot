@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Health Coach Voice Prototype</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>Health Coach Voice Prototype</h1>
+        <p class="sub">On-device pipeline: Moonshine speech-to-text, Gemma 3 via Ollama, Piper voice</p>
+      </div>
+    </div>
+    <div class="top-controls">
+      <div class="seg" role="group" aria-label="Language">
+        <button type="button" class="seg-btn active" data-lang="en">English</button>
+        <button type="button" class="seg-btn" data-lang="es">Español</button>
+      </div>
+      <div id="status-chips" class="chips"></div>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <main class="layout">
+    <!-- Patient view -->
+    <section class="phone" aria-label="Patient app">
+      <div class="phone-head">
+        <div>
+          <div class="phone-title">Health Coach</div>
+          <div class="phone-sub" id="net-label">Online</div>
+        </div>
+        <button type="button" class="ghost small" id="reset-chat" title="Start a new conversation">New chat</button>
+      </div>
+      <div id="chat" class="chat" aria-live="polite"></div>
+      <div class="suggestions" id="suggestions"></div>
+      <form id="text-form" class="composer">
+        <input id="text-input" type="text" autocomplete="off" placeholder="Type a message">
+        <button type="submit" class="ghost small">Send</button>
+      </form>
+      <div class="mic-row">
+        <button type="button" id="mic" class="mic" aria-label="Tap to talk">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
+        </button>
+        <div class="mic-meta">
+          <div id="mic-hint" class="mic-hint">Tap to talk</div>
+          <div class="meter"><span id="meter-fill"></span></div>
+          <label class="hands-free" title="After each reply, reopen the mic automatically">
+            <span class="switch small"><input type="checkbox" id="hands-free" checked><span></span></span>
+            <span id="hands-free-label">Hands-free</span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Under the hood -->
+    <section class="panel" aria-label="Under the hood">
+      <nav class="tabs" role="tablist">
+        <button role="tab" class="tab active" data-tab="latency">Latency</button>
+        <button role="tab" class="tab" data-tab="records">Records</button>
+        <button role="tab" class="tab" data-tab="sync">Sync &amp; plan</button>
+      </nav>
+
+      <div class="tab-body" id="tab-latency">
+        <div class="hero">
+          <div>
+            <div class="hero-label">Speech end to first audio, last turn</div>
+            <div class="hero-value"><span id="hero-ms">–</span><small> s</small></div>
+            <div class="hero-meta"><span id="hero-route" class="badge">no turns yet</span> <span id="hero-target" class="muted">Target: under 2.0 s</span></div>
+          </div>
+          <div class="hero-stats">
+            <div><span class="k">Rule turns, median</span><span class="v" id="stat-rules">–</span></div>
+            <div><span class="k">Gemma turns, median</span><span class="v" id="stat-llm">–</span></div>
+            <div><span class="k">Turns under 2 s</span><span class="v" id="stat-under">–</span></div>
+          </div>
+        </div>
+
+        <h3 class="h">Where the time went</h3>
+        <div id="waterfall" class="waterfall"><p class="muted">Speak or type to see the stages of a turn.</p></div>
+        <div class="legend" id="legend"></div>
+
+        <div class="row-between">
+          <h3 class="h">Turn log</h3>
+          <a class="link" href="/api/turns.csv" download>Download CSV</a>
+        </div>
+        <div class="table-wrap">
+          <table class="tbl" id="turn-table">
+            <thead><tr><th>#</th><th>Patient said</th><th>Path</th><th class="num">Total</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-body" id="tab-records" hidden>
+        <h3 class="h">Care team summary, last 30 days</h3>
+        <div id="provider-summary" class="summary-grid"></div>
+        <h3 class="h">Captured by the assistant</h3>
+        <p class="muted small">Every entry was read back and confirmed by the patient before saving.</p>
+        <div class="table-wrap">
+          <table class="tbl" id="captured-table">
+            <thead><tr><th>Measured</th><th>Reading</th><th>Input</th><th>Patient's words</th><th>Sync</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <h3 class="h">Appointments</h3>
+        <div class="table-wrap">
+          <table class="tbl" id="appt-table">
+            <thead><tr><th>When</th><th>With</th><th>Booked</th><th>Status</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-body" id="tab-sync" hidden>
+        <div class="card">
+          <div class="row-between">
+            <div>
+              <div class="card-title">Network</div>
+              <div class="muted small">Turn off to show the assistant working offline. Writes queue until you turn it back on.</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="online" checked><span></span></label>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Mock service bus</div>
+          <div class="muted small">Stands in for the clinic API path. Nothing in the conversation waits for it.</div>
+          <div class="form-row">
+            <label for="bus-delay">Delivery delay</label>
+            <input type="number" id="bus-delay" min="0" step="10" value="120"> <span class="muted small">seconds</span>
+          </div>
+          <div class="form-row">
+            <label for="conflict">Simulate a booking conflict</label>
+            <label class="switch"><input type="checkbox" id="conflict"><span></span></label>
+          </div>
+          <div class="form-row">
+            <label for="auto-stop">End turn on pause</label>
+            <label class="switch"><input type="checkbox" id="auto-stop" checked><span></span></label>
+          </div>
+          <h3 class="h">Queue</h3>
+          <div id="queue" class="queue"></div>
+        </div>
+        <div class="card">
+          <div class="row-between">
+            <div>
+              <div class="card-title">Health plan on device</div>
+              <div class="muted small" id="plan-meta">–</div>
+            </div>
+            <button type="button" class="ghost small" id="plan-sync">Sync now</button>
+          </div>
+          <details>
+            <summary>View plan text</summary>
+            <pre id="plan-text" class="plan-text"></pre>
+          </details>
+        </div>
+        <div class="card">
+          <div class="row-between">
+            <div>
+              <div class="card-title">Demo data</div>
+              <div class="muted small">Restores sample readings and clinic slots, and clears bookings and the log.</div>
+            </div>
+            <button type="button" class="ghost small danger" id="reset-demo">Reset</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

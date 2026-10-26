@@ -1,0 +1,7 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+numpy>=1.26
+moonshine-voice==0.1.5
+piper-tts==1.8.0
+ollama>=0.6
+pytest>=8
